@@ -10,7 +10,8 @@ import com.ebp08.gestion_financiera_backend.enums.TipoAlerta;
 
 @Repository
 public interface AlertaRepository extends JpaRepository<Alerta, Long> {
-    List<Alerta> findByUsuarioId(Long idUsuario);
+    // Devuelve las alertas del usuario ordenadas de la mas reciente a la mas antigua.
+    List<Alerta> findByUsuarioIdOrderByFechaDesc(Long idUsuario);
     boolean existsByPresupuestoIdAndTipo(Long idPresupuesto, TipoAlerta tipo);
     
 }

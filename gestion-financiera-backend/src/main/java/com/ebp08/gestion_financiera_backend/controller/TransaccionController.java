@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestMapping; // Importa la ano
 import org.springframework.web.bind.annotation.RestController; // Importa la anotación que marca esta clase como controlador REST.
 
 import com.ebp08.gestion_financiera_backend.dto.CrearTransaccionRequest;
+import com.ebp08.gestion_financiera_backend.dto.TransaccionResponse;
 import com.ebp08.gestion_financiera_backend.entity.Transaccion; // Importa la entidad Transaccion porque este controlador recibe y devuelve transacciones.
 import com.ebp08.gestion_financiera_backend.service.TransaccionService; // Importa el servicio de transacciones, que contiene la lógica de negocio.
 
@@ -28,8 +29,8 @@ public class TransaccionController {
     private final TransaccionService transaccionService; // Inyecta el servicio de transacciones para usar su lógica desde el controlador.
 
     @PostMapping
-    public ResponseEntity<Transaccion> crearTransaccion(@RequestBody CrearTransaccionRequest request) { // Recibe un JSON en el body y lo convierte en un objeto CrearTransaccionRequest.
-        Transaccion t = transaccionService.crearTransaccion(request);
+    public ResponseEntity<TransaccionResponse> crearTransaccion(@RequestBody CrearTransaccionRequest request) { // Recibe un JSON en el body y lo convierte en un objeto CrearTransaccionRequest.
+        TransaccionResponse t = transaccionService.crearTransaccion(request);
         return ResponseEntity.status(201).body(t);
     }
 

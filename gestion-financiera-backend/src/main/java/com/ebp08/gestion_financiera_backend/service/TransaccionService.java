@@ -7,6 +7,7 @@ import org.springframework.http.HttpStatus; // Importa los códigos de estado HT
 import org.springframework.stereotype.Service; // Importa la anotación @Service para marcar esta clase como un servicio de Spring.
 import org.springframework.web.server.ResponseStatusException; // Importa la excepción que permite devolver errores HTTP con mensaje personalizado.
 
+import com.ebp08.gestion_financiera_backend.dto.TransaccionResponse;
 import com.ebp08.gestion_financiera_backend.dto.CrearTransaccionRequest; // Importa el DTO que contiene los datos necesarios para crear una transacción.
 import com.ebp08.gestion_financiera_backend.entity.Categoria; // Importa la entidad Categoria porque una transacción debe pertenecer a una categoría.
 import com.ebp08.gestion_financiera_backend.entity.Transaccion; // Importa la entidad Transaccion porque este servicio crea, consulta y elimina transacciones.
@@ -27,8 +28,9 @@ public class TransaccionService { // Define la clase de servicio para manejar la
     private final TransaccionRepository transaccionRepository; // Repositorio para operaciones de base de datos sobre transacciones.
     private final CategoriaRepository categoriaRepository; // Repositorio para buscar categorías existentes.
     private final SecurityHelper securityHelper; // Helper de seguridad para obtener el usuario autenticado.
+    private final AlertaService alertaService;
 
-    public Transaccion crearTransaccion(CrearTransaccionRequest request) { // Método para crear una nueva transacción a partir de los datos del DTO.
+    public TransaccionResponse crearTransaccion(CrearTransaccionRequest request) { // Método para crear una nueva transacción a partir de los datos del DTO.
         validarTipo(request);
 
         java.math.BigDecimal monto = MoneyParser.parse(request.getMonto());
@@ -47,7 +49,8 @@ public class TransaccionService { // Define la clase de servicio para manejar la
 
         transaccion.setDescripcion(safeDescripcion(request.getDescripcion()));
 
-        return transaccionRepository.save(transaccion); // Guarda la transacción en la base de datos y devuelve la entidad ya persistida.
+        Transaccion transaccionGuardada = transaccionRepository.save(transaccion); // Guarda la transacción en la base de datos y devuelve la entidad ya persistida.
+        return new TransaccionResponse(transaccionGuardada, alertaService.generarAlertas());
     }
 
     public List<Transaccion> obtenerTransaccionesUsuario() { // Método para listar todas las transacciones de un usuario específico.

@@ -1,13 +1,18 @@
 package com.ebp08.gestion_financiera_backend.service;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.ebp08.gestion_financiera_backend.dto.AlertaResponse;
+import com.ebp08.gestion_financiera_backend.dto.AlertaResumenResponse;
 import com.ebp08.gestion_financiera_backend.dto.ResumenPresupuestoCategoriaResponse;
 import com.ebp08.gestion_financiera_backend.dto.ResumenPresupuestoGlobalResponse;
 import com.ebp08.gestion_financiera_backend.entity.Alerta;
@@ -27,43 +32,60 @@ public class AlertaService {
     private final SecurityHelper securityHelper;
     private final PresupuestoService presupuestoService;
 
-    public List<Alerta> obtenerAlertasUsuario() {
+    // Trae el historial de alertas del usuario autenticado.
+    public AlertaResponse obtenerAlertasUsuario() {
         Long idUsuario = securityHelper.obtenerUsuarioAutenticado().getId();
 
         if (idUsuario == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El id del usuario no puede ser nulo.");
         }
 
-        return alertaRepository.findByUsuarioId(idUsuario);
+        List<AlertaResumenResponse> alertas = alertaRepository.findByUsuarioIdOrderByFechaDesc(idUsuario)
+            .stream()
+            .map(this::convertirAResumen)
+            .collect(Collectors.toList());
+
+        return new AlertaResponse(alertas);
     }
 
-    public void generarAlertas(){
+    // Genera las alertas nuevas segun el uso de los presupuestos.
+    public List<Alerta> generarAlertas(){
+
+        List<Alerta> alertasGeneradas = new ArrayList<>();
 
         Usuario usuario = securityHelper.obtenerUsuarioAutenticado();
 
         ResumenPresupuestoGlobalResponse presupuestoGlobal = presupuestoService.obtenerResumenPresupuestoGlobal();
         if (presupuestoGlobal.isPresupuestoDefinido()) {
-            evaluarYGenerarAlerta(presupuestoGlobal.getIdPresupuesto(), presupuestoGlobal.getPorcentajeUso(), usuario);
+            Alerta alerta = evaluarYGenerarAlerta(presupuestoGlobal.getIdPresupuesto(), 
+                                                    presupuestoGlobal.getPorcentajeUso(), usuario);
+            if (alerta != null) { alertasGeneradas.add(alerta); }
         }
 
         List<ResumenPresupuestoCategoriaResponse> presupuestosCategoria = presupuestoService.obtenerResumenPresupuestoCategorias();
         for (ResumenPresupuestoCategoriaResponse presupuesto : presupuestosCategoria) {
-            evaluarYGenerarAlerta(presupuesto.getIdPresupuesto(), presupuesto.getPorcentajeUso(), usuario);
+            Alerta alerta = evaluarYGenerarAlerta(presupuesto.getIdPresupuesto(), 
+                                                presupuesto.getPorcentajeUso(), usuario);
+            if (alerta != null) { alertasGeneradas.add(alerta); }
         }
+
+        return alertasGeneradas;
     }
 
-    private void evaluarYGenerarAlerta(Long idPresupuesto, BigDecimal porcentaje, Usuario usuario) {
+    private Alerta evaluarYGenerarAlerta(Long idPresupuesto, BigDecimal porcentaje, Usuario usuario) {
         if (porcentaje.compareTo(BigDecimal.valueOf(100)) >= 0
                 && !alertaRepository.existsByPresupuestoIdAndTipo(idPresupuesto, TipoAlerta.SOBREPASO)) {
-            crearAlerta(idPresupuesto, usuario, TipoAlerta.SOBREPASO, porcentaje);
+            return crearAlerta(idPresupuesto, usuario, TipoAlerta.SOBREPASO, porcentaje);
 
         } else if (porcentaje.compareTo(BigDecimal.valueOf(80)) >= 0
                 && !alertaRepository.existsByPresupuestoIdAndTipo(idPresupuesto, TipoAlerta.PROXIMIDAD)) {
-            crearAlerta(idPresupuesto, usuario, TipoAlerta.PROXIMIDAD, porcentaje);
+            return crearAlerta(idPresupuesto, usuario, TipoAlerta.PROXIMIDAD, porcentaje);
         }
+
+        return null;
     }
 
-    private void crearAlerta(Long idPresupuesto, Usuario usuario, TipoAlerta tipo, BigDecimal porcentaje) {
+    private Alerta crearAlerta(Long idPresupuesto, Usuario usuario, TipoAlerta tipo, BigDecimal porcentaje) {
         Presupuesto presupuesto = presupuestoService.obtenerPresupuestoPorId(idPresupuesto)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, 
                                                             "Presupuesto no encontrado para generar alerta."));
@@ -72,9 +94,23 @@ public class AlertaService {
         alerta.setUsuario(usuario);
         alerta.setPresupuesto(presupuesto);
         alerta.setTipo(tipo);
-        alerta.setMensaje(String.format("⚠️ ¡Alerta! Has alcanzado el %.2f%% de tu presupuesto %s.", porcentaje, 
+
+        // Se redondea para mostrar un mensaje mas limpio al usuario.
+        String porcentajeRedondeado = porcentaje.setScale(0, RoundingMode.HALF_UP).toPlainString();
+        
+        alerta.setMensaje(String.format("⚠️ ¡Alerta! Has alcanzado el %s%% de tu presupuesto %s.", porcentajeRedondeado, 
             presupuesto.getCategoria() != null ? "en la categoría " + presupuesto.getCategoria().getNombre() : "global"));
         alerta.setFecha(LocalDateTime.now());
-        alertaRepository.save(alerta);
+        return alertaRepository.save(alerta);
+    }
+
+    // Convierte una alerta completa en un resumen mas liviano para la respuesta.
+    private AlertaResumenResponse convertirAResumen(Alerta alerta) {
+        return new AlertaResumenResponse(
+                alerta.getId(),
+                alerta.getPresupuesto() != null ? alerta.getPresupuesto().getId() : null,
+                alerta.getTipo(),
+                alerta.getMensaje(),
+                alerta.getFecha());
     }
 }
