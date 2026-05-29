@@ -1,5 +1,6 @@
 package com.ebp08.gestion_financiera_backend.service; // Indica que esta clase pertenece al paquete service, donde va la lógica de negocio.
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime; // Importa LocalDateTime para guardar la fecha y hora en la que se crea la transacción.
 import java.util.List; // Importa List porque más abajo tenemos un método que devuelve una lista de transacciones.
 
@@ -164,5 +165,33 @@ public class TransaccionService { // Define la clase de servicio para manejar la
 
         transaccionRepository.delete(transaccion);
     }
+
+    public List<Transaccion> obtenerTransaccionesPorMes(int mes, int anio){
+        Long idUsuario = securityHelper.obtenerUsuarioAutenticado().getId();
+
+        if (idUsuario == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El id del usuario no puede ser nulo.");
+        }
+
+        LocalDateTime fechaInicio = LocalDateTime.of(anio, mes, 1, 0, 0);
+        LocalDateTime fechaFin = fechaInicio.plusMonths(1).minusSeconds(1);
+
+        return transaccionRepository.findByUsuarioIdAndFechaBetween(idUsuario, fechaInicio, fechaFin);
+    }
+
+    public BigDecimal calcularTotalIngresos(List<Transaccion> transacciones) {
+        return transacciones.stream()
+                .filter(t -> t.getTipo() == TipoTransaccion.INGRESO)
+                .map(Transaccion::getMonto)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    public BigDecimal calcularTotalGastos(List<Transaccion> transacciones) {
+        return transacciones.stream()
+                .filter(t -> t.getTipo() == TipoTransaccion.EGRESO)
+                .map(Transaccion::getMonto)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
 }
 

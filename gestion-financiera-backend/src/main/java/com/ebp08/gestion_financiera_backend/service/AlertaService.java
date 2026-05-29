@@ -34,6 +34,10 @@ public class AlertaService {
 
     // Trae el historial de alertas del usuario autenticado.
     public AlertaResponse obtenerAlertasUsuario() {
+        // Sincroniza el estado actual de los presupuestos antes de leer el historial,
+        // para cubrir presupuestos creados después de las transacciones.
+        generarAlertas();
+
         Long idUsuario = securityHelper.obtenerUsuarioAutenticado().getId();
 
         if (idUsuario == null) {
@@ -78,6 +82,7 @@ public class AlertaService {
             return crearAlerta(idPresupuesto, usuario, TipoAlerta.SOBREPASO, porcentaje);
 
         } else if (porcentaje.compareTo(BigDecimal.valueOf(80)) >= 0
+                && porcentaje.compareTo(BigDecimal.valueOf(100)) < 0
                 && !alertaRepository.existsByPresupuestoIdAndTipo(idPresupuesto, TipoAlerta.PROXIMIDAD)) {
             return crearAlerta(idPresupuesto, usuario, TipoAlerta.PROXIMIDAD, porcentaje);
         }
