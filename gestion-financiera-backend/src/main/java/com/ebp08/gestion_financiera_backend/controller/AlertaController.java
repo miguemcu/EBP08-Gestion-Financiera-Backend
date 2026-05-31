@@ -1,5 +1,7 @@
 package com.ebp08.gestion_financiera_backend.controller;
 
+import java.util.List;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -19,7 +21,7 @@ public class AlertaController {
 
     // Devuelve el historial de alertas del usuario autenticado.
     @GetMapping("/usuario")
-    public ResponseEntity<AlertaResponse> obtenerHistorialAlertasUsuario() {
-        return ResponseEntity.status(200).body(alertaService.obtenerAlertasUsuario());
+    public ResponseEntity<List<AlertaResponse>> obtenerHistorialAlertasUsuario() {
+        return ResponseEntity.status(200).body(alertaService.obtenerAlertasUsuarioResponse());
     }
 }

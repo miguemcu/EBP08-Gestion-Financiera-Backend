@@ -12,9 +12,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.ebp08.gestion_financiera_backend.dto.AlertaResponse;
-import com.ebp08.gestion_financiera_backend.dto.AlertaResumenResponse;
-import com.ebp08.gestion_financiera_backend.dto.ResumenPresupuestoCategoriaResponse;
-import com.ebp08.gestion_financiera_backend.dto.ResumenPresupuestoGlobalResponse;
 import com.ebp08.gestion_financiera_backend.entity.Alerta;
 import com.ebp08.gestion_financiera_backend.entity.Presupuesto;
 import com.ebp08.gestion_financiera_backend.entity.Usuario;
@@ -32,8 +29,8 @@ public class AlertaService {
     private final SecurityHelper securityHelper;
     private final PresupuestoService presupuestoService;
 
-    // Trae el historial de alertas del usuario autenticado.
-    public AlertaResponse obtenerAlertasUsuario() {
+    // Trae el historial de alertas del usuario autenticado para uso interno entre servicios.
+    public List<Alerta> obtenerAlertasUsuario() {
         // Sincroniza el estado actual de los presupuestos antes de leer el historial,
         // para cubrir presupuestos creados después de las transacciones.
         generarAlertas();
@@ -44,12 +41,20 @@ public class AlertaService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El id del usuario no puede ser nulo.");
         }
 
-        List<AlertaResumenResponse> alertas = alertaRepository.findByUsuarioIdOrderByFechaDesc(idUsuario)
-            .stream()
-            .map(this::convertirAResumen)
-            .collect(Collectors.toList());
+        return alertaRepository.findByUsuarioIdOrderByFechaDesc(idUsuario);
+    }
 
-        return new AlertaResponse(alertas);
+    // Trae el historial de alertas del usuario autenticado para respuestas del controller.
+    public List<AlertaResponse> obtenerAlertasUsuarioResponse() {
+        return obtenerAlertasUsuario()
+            .stream()
+            .map(alerta -> new AlertaResponse(
+                    alerta.getId(),
+                    alerta.getPresupuesto() != null ? alerta.getPresupuesto().getId() : null,
+                    alerta.getTipo(),
+                    alerta.getMensaje(),
+                    alerta.getFecha()))
+            .collect(Collectors.toList());
     }
 
     // Genera las alertas nuevas segun el uso de los presupuestos.
@@ -59,17 +64,21 @@ public class AlertaService {
 
         Usuario usuario = securityHelper.obtenerUsuarioAutenticado();
 
-        ResumenPresupuestoGlobalResponse presupuestoGlobal = presupuestoService.obtenerResumenPresupuestoGlobal();
-        if (presupuestoGlobal.isPresupuestoDefinido()) {
-            Alerta alerta = evaluarYGenerarAlerta(presupuestoGlobal.getIdPresupuesto(), 
-                                                    presupuestoGlobal.getPorcentajeUso(), usuario);
+        Presupuesto presupuestoGlobal = presupuestoService.obtenerPresupuestoGlobalUsuario().orElse(null);
+        if (presupuestoGlobal != null) {
+            Alerta alerta = evaluarYGenerarAlerta(
+                                                    presupuestoGlobal.getId(),
+                                                    presupuestoService.calcularPorcentajeUsoPresupuesto(presupuestoGlobal),
+                                                    usuario);
             if (alerta != null) { alertasGeneradas.add(alerta); }
         }
 
-        List<ResumenPresupuestoCategoriaResponse> presupuestosCategoria = presupuestoService.obtenerResumenPresupuestoCategorias();
-        for (ResumenPresupuestoCategoriaResponse presupuesto : presupuestosCategoria) {
-            Alerta alerta = evaluarYGenerarAlerta(presupuesto.getIdPresupuesto(), 
-                                                presupuesto.getPorcentajeUso(), usuario);
+        List<Presupuesto> presupuestosCategoria = presupuestoService.obtenerResumenPresupuestoCategorias();
+        for (Presupuesto presupuesto : presupuestosCategoria) {
+            Alerta alerta = evaluarYGenerarAlerta(
+                                                presupuesto.getId(), 
+                                                presupuestoService.calcularPorcentajeUsoPresupuesto(presupuesto),
+                                                usuario);
             if (alerta != null) { alertasGeneradas.add(alerta); }
         }
 
@@ -109,13 +118,4 @@ public class AlertaService {
         return alertaRepository.save(alerta);
     }
 
-    // Convierte una alerta completa en un resumen mas liviano para la respuesta.
-    private AlertaResumenResponse convertirAResumen(Alerta alerta) {
-        return new AlertaResumenResponse(
-                alerta.getId(),
-                alerta.getPresupuesto() != null ? alerta.getPresupuesto().getId() : null,
-                alerta.getTipo(),
-                alerta.getMensaje(),
-                alerta.getFecha());
-    }
 }

@@ -1,6 +1,8 @@
 package com.ebp08.gestion_financiera_backend.dto;
 
-import java.util.List;
+import java.time.LocalDateTime;
+
+import com.ebp08.gestion_financiera_backend.enums.TipoAlerta;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -10,6 +12,10 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @NoArgsConstructor
 public class AlertaResponse {
-    // Contiene el historial de alertas que se devuelve al usuario.
-    private List<AlertaResumenResponse> alertas;
+    // Resume cada alerta con los datos utiles para el front.
+    private Long id;
+    private Long presupuestoId;
+    private TipoAlerta tipo;
+    private String mensaje;
+    private LocalDateTime fecha;
 }
