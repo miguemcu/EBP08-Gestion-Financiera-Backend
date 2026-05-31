@@ -20,7 +20,7 @@ public class TransaccionProgramadaScheduler {
     private final TransaccionProgramadaRepository transaccionProgramadaRepository;
     private final TransaccionRepository transaccionRepository;
 
-    @Scheduled(cron = "0 0 2 * * *") // Se ejecuta cada dia a las 20:00
+    @Scheduled(cron = "0 0 2 * * *") // Se ejecuta cada dia a las 2:00 AM
     public void procesarTransaccionesProgramadas() {
         List<TransaccionProgramada> activas = transaccionProgramadaRepository
             .findByEstado(Estado.ACTIVO);
@@ -31,32 +31,32 @@ public class TransaccionProgramadaScheduler {
             }
         }
     }
+    
     private boolean debeProcesarse(TransaccionProgramada tp) {
-    
-    LocalDate hoy = LocalDate.now();
 
-    // Si tiene fecha fin y ya pasó → no procesar
-    if (tp.getFechaFin() != null && hoy.isAfter(tp.getFechaFin())) {
-        return false;
+        LocalDate hoy = LocalDate.now();
+
+        // Si tiene fecha fin y ya pasó → no procesar
+        if (tp.getFechaFin() != null && hoy.isAfter(tp.getFechaFin())) {
+            return false;
+        }
+
+        // Si nunca se ha ejecutado → ejecutar
+        if (tp.getUltimaEjecucion() == null) {
+            return true;
+        }
+
+        LocalDate ultimaEjecucion = tp.getUltimaEjecucion().toLocalDate();
+
+        // Verificar según frecuencia
+        return switch (tp.getFrecuencia()) {
+            case DIARIA -> !ultimaEjecucion.isEqual(hoy);
+            case SEMANAL -> ultimaEjecucion.plusDays(7).isEqual(hoy) ||
+                             ultimaEjecucion.plusDays(7).isBefore(hoy);
+            case MENSUAL -> ultimaEjecucion.plusMonths(1).isEqual(hoy) ||
+                             ultimaEjecucion.plusMonths(1).isBefore(hoy);
+        };
     }
-
-    // Si nunca se ha ejecutado → ejecutar
-    if (tp.getUltimaEjecucion() == null) {
-        return true;
-    }
-
-    LocalDate ultimaEjecucion = tp.getUltimaEjecucion().toLocalDate();
-
-    // Verificar según frecuencia
-    return switch (tp.getFrecuencia()) {
-        case DIARIA   -> !ultimaEjecucion.isEqual(hoy);
-        case SEMANAL  -> ultimaEjecucion.plusDays(7).isEqual(hoy) || 
-                         ultimaEjecucion.plusDays(7).isBefore(hoy);
-        case MENSUAL  -> ultimaEjecucion.plusMonths(1).isEqual(hoy) || 
-                         ultimaEjecucion.plusMonths(1).isBefore(hoy);
-    };
-    
-}
 
     private void ejecutarTransaccion(TransaccionProgramada tp) {
         Transaccion transaccion = new Transaccion();
@@ -72,6 +72,4 @@ public class TransaccionProgramadaScheduler {
         tp.setUltimaEjecucion(LocalDateTime.now());
         transaccionProgramadaRepository.save(tp);
     }
-
-
 }

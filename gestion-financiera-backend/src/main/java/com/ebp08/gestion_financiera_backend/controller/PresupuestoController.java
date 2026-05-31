@@ -46,7 +46,7 @@ public class PresupuestoController {
 
     @GetMapping("/categorias/usuario")
     public ResponseEntity<List<ResumenPresupuestoCategoriaResponse>> obtenerResumenPresupuestoCategorias() {
-        return ResponseEntity.ok(presupuestoService.obtenerResumenPresupuestoCategorias());
+        return ResponseEntity.ok(presupuestoService.obtenerResumenPresupuestoCategoriasResponse());
     }
      
 }

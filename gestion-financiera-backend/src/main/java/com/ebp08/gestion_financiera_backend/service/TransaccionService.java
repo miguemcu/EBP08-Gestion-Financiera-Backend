@@ -1,6 +1,6 @@
 package com.ebp08.gestion_financiera_backend.service; // Indica que esta clase pertenece al paquete service, donde va la lógica de negocio.
 
-import java.math.BigDecimal; // Importa BigDecimal para manejar valores monetarios con precisión y evitar errores de decimales.
+import java.math.BigDecimal;
 import java.time.LocalDateTime; // Importa LocalDateTime para guardar la fecha y hora en la que se crea la transacción.
 import java.util.List; // Importa List porque más abajo tenemos un método que devuelve una lista de transacciones.
 
@@ -8,6 +8,8 @@ import org.springframework.http.HttpStatus; // Importa los códigos de estado HT
 import org.springframework.stereotype.Service; // Importa la anotación @Service para marcar esta clase como un servicio de Spring.
 import org.springframework.web.server.ResponseStatusException; // Importa la excepción que permite devolver errores HTTP con mensaje personalizado.
 
+import com.ebp08.gestion_financiera_backend.dto.ActualizarTransaccionRequest;
+import com.ebp08.gestion_financiera_backend.dto.TransaccionResponse;
 import com.ebp08.gestion_financiera_backend.dto.CrearTransaccionRequest; // Importa el DTO que contiene los datos necesarios para crear una transacción.
 import com.ebp08.gestion_financiera_backend.entity.Categoria; // Importa la entidad Categoria porque una transacción debe pertenecer a una categoría.
 import com.ebp08.gestion_financiera_backend.entity.Transaccion; // Importa la entidad Transaccion porque este servicio crea, consulta y elimina transacciones.
@@ -16,6 +18,8 @@ import com.ebp08.gestion_financiera_backend.repository.CategoriaRepository; // I
 import com.ebp08.gestion_financiera_backend.repository.TransaccionRepository; // Importa el repositorio de transacciones para guardar, buscar y borrar transacciones.
 import com.ebp08.gestion_financiera_backend.enums.TipoTransaccion;
 import com.ebp08.gestion_financiera_backend.security.SecurityHelper; // Importa el helper de seguridad para obtener el usuario autenticado.
+import com.ebp08.gestion_financiera_backend.util.MoneyParser;
+import com.ebp08.gestion_financiera_backend.util.AppConstants;
 
 import lombok.AllArgsConstructor; // Importa Lombok para generar automáticamente un constructor con todos los atributos final.
 
@@ -26,30 +30,13 @@ public class TransaccionService { // Define la clase de servicio para manejar la
     private final TransaccionRepository transaccionRepository; // Repositorio para operaciones de base de datos sobre transacciones.
     private final CategoriaRepository categoriaRepository; // Repositorio para buscar categorías existentes.
     private final SecurityHelper securityHelper; // Helper de seguridad para obtener el usuario autenticado.
+    private final AlertaService alertaService;
 
-    public Transaccion crearTransaccion(CrearTransaccionRequest request) { // Método para crear una nueva transacción a partir de los datos del DTO.
+    public TransaccionResponse crearTransaccion(CrearTransaccionRequest request) { // Método para crear una nueva transacción a partir de los datos del DTO.
+        validarTipo(request);
 
-        if (request.getTipo() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Debe enviar un tipo de transacción válido.");
-        }
+        java.math.BigDecimal monto = MoneyParser.parse(request.getMonto());
 
-        if (request.getMonto() == null || request.getMonto().trim().isEmpty()) { // Valida que el monto no sea nulo ni venga vacío.
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El monto es obligatorio."); // Si viene vacío, responde error 400.
-        }
-
-        BigDecimal monto; // Declara una variable BigDecimal para guardar el monto convertido desde texto.
-
-        try { // Intenta convertir el monto recibido como String a BigDecimal.
-            monto = new BigDecimal(request.getMonto().trim()); // Convierte el texto del monto a BigDecimal quitando espacios al inicio y al final.
-        } catch (NumberFormatException e) { // Si la conversión falla porque el texto no es un número válido...
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El monto debe tener un formato numérico válido."); // ...responde error 400 indicando que el monto es inválido.
-        }
-
-        if (monto.compareTo(BigDecimal.ZERO) <= 0) { // Valida que el monto sea mayor que cero.
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El monto debe ser mayor a cero."); // Si es cero o negativo, responde error 400.
-        }
-
-        
         Usuario usuarioAutenticado = securityHelper.obtenerUsuarioAutenticado();
 
         Categoria categoria = obtenerCategoriaSolicitadaOPorDefecto(request.getIdCategoria(), usuarioAutenticado);
@@ -62,13 +49,10 @@ public class TransaccionService { // Define la clase de servicio para manejar la
         transaccion.setMonto(monto); // Asigna el monto ya validado y convertido.
         transaccion.setFecha(LocalDateTime.now()); // Asigna automáticamente la fecha y hora actual del sistema.
 
-        if (request.getDescripcion() == null || request.getDescripcion().trim().isEmpty()) { // Verifica si la descripción vino nula o vacía.
-            transaccion.setDescripcion(""); // Si está vacía, asigna una cadena vacía para evitar null.
-        } else { // Si la descripción sí vino con contenido...
-            transaccion.setDescripcion(request.getDescripcion().trim()); // ...la guarda quitando espacios sobrantes al inicio y al final.
-        }
+        transaccion.setDescripcion(safeDescripcion(request.getDescripcion()));
 
-        return transaccionRepository.save(transaccion); // Guarda la transacción en la base de datos y devuelve la entidad ya persistida.
+        Transaccion transaccionGuardada = transaccionRepository.save(transaccion); // Guarda la transacción en la base de datos y devuelve la entidad ya persistida.
+        return new TransaccionResponse(transaccionGuardada, alertaService.generarAlertas());
     }
 
     public List<Transaccion> obtenerTransaccionesUsuario() { // Método para listar todas las transacciones de un usuario específico.
@@ -113,8 +97,9 @@ public class TransaccionService { // Define la clase de servicio para manejar la
 
     private Categoria obtenerCategoriaSolicitadaOPorDefecto(Long idCategoria, Usuario usuarioAutenticado) {
         if (idCategoria == null) {
-            return categoriaRepository.findByNombreIgnoreCaseAndUsuarioIsNull("OTROS")
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "No existe la categoría global OTROS."));
+            return categoriaRepository.findByNombreIgnoreCaseAndUsuarioIsNull(AppConstants.DEFAULT_CATEGORY_NAME)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                        String.format(AppConstants.DEFAULT_CATEGORY_NOT_FOUND, AppConstants.DEFAULT_CATEGORY_NAME)));
         }
 
         Categoria categoria = categoriaRepository.findById(idCategoria)
@@ -128,6 +113,48 @@ public class TransaccionService { // Define la clase de servicio para manejar la
         return categoria;
     }
 
+    private void validarTipo(CrearTransaccionRequest request) {
+        if (request.getTipo() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Debe enviar un tipo de transacción válido.");
+        }
+    }
+
+    private String safeDescripcion(String descripcion) {
+        return (descripcion == null || descripcion.trim().isEmpty()) ? "" : descripcion.trim();
+    }
+
+    public Transaccion actualizarTransaccion(Long idTransaccion, ActualizarTransaccionRequest request) {
+
+        Long idUsuario = securityHelper.obtenerUsuarioAutenticado().getId();
+        securityHelper.validarPropiedad(idUsuario);
+
+        // Busca la transacción asegurando que pertenezca al usuario autenticado.
+        Transaccion transaccion = transaccionRepository.findByIdAndUsuarioId(idTransaccion, idUsuario)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Transacción no encontrada para ese usuario."));
+
+        if (request.getIdCategoria() != null) {
+            // Si llega categoría nueva, se valida propiedad/global igual que en creación.
+            Categoria categoria = obtenerCategoriaSolicitadaOPorDefecto(request.getIdCategoria(),
+                    securityHelper.obtenerUsuarioAutenticado());
+            transaccion.setCategoria(categoria);
+        }
+
+        if (request.getTipo() != null) {
+            transaccion.setTipo(request.getTipo());
+        }
+
+        if (request.getMonto() != null && !request.getMonto().trim().isEmpty()) {
+            transaccion.setMonto(MoneyParser.parse(request.getMonto()));
+        }
+
+        if (request.getDescripcion() != null) {
+            transaccion.setDescripcion(safeDescripcion(request.getDescripcion()));
+        }
+
+        return transaccionRepository.save(transaccion);
+    }
+
     public void eliminarTransaccion(Long idTransaccion) {
 
         Long idUsuario = securityHelper.obtenerUsuarioAutenticado().getId();
@@ -138,5 +165,33 @@ public class TransaccionService { // Define la clase de servicio para manejar la
 
         transaccionRepository.delete(transaccion);
     }
+
+    public List<Transaccion> obtenerTransaccionesPorMes(int mes, int anio){
+        Long idUsuario = securityHelper.obtenerUsuarioAutenticado().getId();
+
+        if (idUsuario == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El id del usuario no puede ser nulo.");
+        }
+
+        LocalDateTime fechaInicio = LocalDateTime.of(anio, mes, 1, 0, 0);
+        LocalDateTime fechaFin = fechaInicio.plusMonths(1).minusSeconds(1);
+
+        return transaccionRepository.findByUsuarioIdAndFechaBetween(idUsuario, fechaInicio, fechaFin);
+    }
+
+    public BigDecimal calcularTotalIngresos(List<Transaccion> transacciones) {
+        return transacciones.stream()
+                .filter(t -> t.getTipo() == TipoTransaccion.INGRESO)
+                .map(Transaccion::getMonto)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    public BigDecimal calcularTotalGastos(List<Transaccion> transacciones) {
+        return transacciones.stream()
+                .filter(t -> t.getTipo() == TipoTransaccion.EGRESO)
+                .map(Transaccion::getMonto)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
 }
 
