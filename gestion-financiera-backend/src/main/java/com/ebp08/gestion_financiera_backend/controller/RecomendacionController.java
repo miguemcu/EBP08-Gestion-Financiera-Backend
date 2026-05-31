@@ -22,4 +22,10 @@ public class RecomendacionController {
         return ResponseEntity.ok(recomendaciones);
     }
 
+    // Endpoint para obtener recomendaciones basadas en alertas y presupuestos.
+    @GetMapping("/alertas")
+    public ResponseEntity<String> obtenerRecomendacionesPorAlertas() {
+        String recomendaciones = recomendacionService.obtenerRecomendacionesPorAlertas();
+        return ResponseEntity.ok(recomendaciones);
+    }
 }

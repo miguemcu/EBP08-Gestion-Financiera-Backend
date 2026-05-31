@@ -12,6 +12,8 @@ import org.springframework.web.client.RestTemplate;
 
 import com.ebp08.gestion_financiera_backend.dto.GeminiRequest;
 import com.ebp08.gestion_financiera_backend.dto.GeminiResponse;
+import com.ebp08.gestion_financiera_backend.entity.Alerta;
+import com.ebp08.gestion_financiera_backend.entity.Presupuesto;
 import com.ebp08.gestion_financiera_backend.entity.Transaccion;
 
 @Service
@@ -25,10 +27,17 @@ public class RecomendacionService {
 
     private final RestTemplate restTemplate;
     private final TransaccionService transaccionService;
+    private final AlertaService alertaService;
+    private final PresupuestoService presupuestoService;
 
-    public RecomendacionService(RestTemplate restTemplate, TransaccionService transaccionService) {
+    public RecomendacionService(RestTemplate restTemplate, 
+                                TransaccionService transaccionService, 
+                                AlertaService alertaService,
+                                PresupuestoService presupuestoService) {
         this.restTemplate = restTemplate;
         this.transaccionService = transaccionService;
+        this.alertaService = alertaService;
+        this.presupuestoService = presupuestoService;
     }
     
     public String obtenerRecomendacionesPorBalance() {
@@ -84,6 +93,57 @@ public class RecomendacionService {
                 totalGastos,
                 balance,
                 detalleTransacciones
+        );
+
+        return llamarAPI(prompt);
+    }
+
+    public String obtenerRecomendacionesPorAlertas() {
+        
+        // 1. Obtener las alertas generadas y presupuestos del usuario
+        
+        List<Alerta> alertas = alertaService.obtenerAlertasUsuario();
+
+        if (alertas.isEmpty()) {
+            return "No se han generado alertas de presupuesto para este mes. ¡Sigue así!";
+        }
+
+        List<Presupuesto> presupuestos = presupuestoService.obtenerResumenPresupuestoCategorias();
+
+        // 2. Detallamos las alertas y los presupuestos para el prompt
+        
+        StringBuilder detalleAlertas = new StringBuilder();
+        alertas.forEach(a -> detalleAlertas.append(
+                String.format("- %s: %s%n", a.getTipo(), a.getMensaje())
+        )); 
+
+        StringBuilder detallePresupuestos = new StringBuilder();
+        presupuestos.forEach(p -> detallePresupuestos.append(
+            String.format("- %s: límite $%s, gastado $%s (%s%%)%n",
+                        p.getCategoria().getNombre(),
+                        p.getMontoLimite(),
+                        presupuestoService.calcularGastoPresupuesto(p),
+                        presupuestoService.calcularPorcentajeUsoPresupuesto(p))
+        ));
+
+        //. 3. Construimos el prompt para Gemini
+        String prompt = String.format("""
+                Eres un asesor financiero inteligente. Basándote en las siguientes alertas de presupuesto \
+                y el detalle de los presupuestos por categoría, proporciona 3 recomendaciones personalizadas para \
+                mejorar la salud financiera del usuario. 
+                Recomienda acciones concretas, cortas y accionables en español, \
+                como reducir gastos en ciertas categorías o fortalecer el ahorro.
+
+                Alertas activas:
+                %s
+
+                Detalle de presupuestos por categoría:
+                %s
+
+                Genera exactamente 3 recomendaciones numeradas basadas en los patrones que observas.
+                """,
+                detalleAlertas,
+                detallePresupuestos
         );
 
         return llamarAPI(prompt);

@@ -3,6 +3,7 @@ package com.ebp08.gestion_financiera_backend.service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -66,6 +67,7 @@ public class PresupuestoService {
 
         return presupuestoRepository.save(presupuesto); // Crea un nuevo presupuesto global
     }
+    
     // Crear un presupuesto específico para una categoría
     public Presupuesto crearPresupuestoCategoria(CrearPresupuestoCategoriaRequest request) {
         
@@ -154,7 +156,7 @@ public class PresupuestoService {
         return categorias.stream()
             .map(categoria -> presupuestoRepository.findByUsuarioIdAndCategoriaIdAndMesActual(idUsuario, categoria.getId()).orElse(null))
             .filter(java.util.Objects::nonNull)
-            .toList();
+            .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
     }
 
     // Trae el resumen de presupuestos por categoria para respuestas del controller.
@@ -167,7 +169,7 @@ public class PresupuestoService {
         return obtenerResumenPresupuestoCategorias().stream()
             .map(presupuesto -> construirResumenCategoriaResponse(presupuesto, transaccionesMes))
             .filter(java.util.Objects::nonNull)
-            .toList();
+            .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
     }
 
     private ResumenPresupuestoCategoriaResponse construirResumenCategoriaResponse(Presupuesto presupuesto, List<Transaccion> transaccionesMes) {
