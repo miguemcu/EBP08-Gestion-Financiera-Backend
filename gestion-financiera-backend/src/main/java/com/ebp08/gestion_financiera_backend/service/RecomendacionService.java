@@ -8,6 +8,8 @@ import java.util.Locale;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpStatusCodeException;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
 import com.ebp08.gestion_financiera_backend.dto.GeminiRequest;
@@ -18,6 +20,9 @@ import com.ebp08.gestion_financiera_backend.entity.Transaccion;
 
 @Service
 public class RecomendacionService {
+
+    private static final String IA_NO_DISPONIBLE =
+            "La API de IA no está disponible temporalmente. Intenta nuevamente en unos minutos.";
 
     @Value("${gemini.api.key}")
     private String apiKey;
@@ -158,22 +163,31 @@ public class RecomendacionService {
                 ))
         );
 
-        GeminiResponse response = restTemplate.postForObject(
-            url, 
-            request,
-            GeminiResponse.class
-        );
+        try {
+            GeminiResponse response = restTemplate.postForObject(
+                url,
+                request,
+                GeminiResponse.class
+            );
 
-        if (response == null || response.getCandidates() == null 
-                || response.getCandidates().isEmpty()) {
-            return "No se pudieron generar recomendaciones en este momento.";
+            if (response == null || response.getCandidates() == null
+                    || response.getCandidates().isEmpty()) {
+                return "No se pudieron generar recomendaciones en este momento.";
+            }
+
+            return response.getCandidates()
+                            .get(0)
+                            .getContent()
+                            .getParts()
+                            .get(0)
+                            .getText();
+        } catch (HttpStatusCodeException ex) {
+            System.err.println("Error llamando a Gemini. Status: " + ex.getStatusCode().value()
+                    + ", body: " + ex.getResponseBodyAsString());
+            return IA_NO_DISPONIBLE;
+        } catch (RestClientException ex) {
+            System.err.println("Error de red o cliente llamando a Gemini: " + ex.getMessage());
+            return IA_NO_DISPONIBLE;
         }
-
-        return response.getCandidates()
-                        .get(0)
-                        .getContent()
-                        .getParts()
-                        .get(0)
-                        .getText();
     }
 }
