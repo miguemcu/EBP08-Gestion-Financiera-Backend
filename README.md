@@ -1,9 +1,8 @@
 # EBP08-Gestion-Financiera-Backend
 
-📌 Descripción del Proyecto
+📌 Descripción del Proyecto **eko**
 ---------------------------
 
 ### 🎯 Objetivo General
 
-Desarrollar una aplicación web que permita a los usuarios gestionar su información financiera personal mediante el registro, clasificación y análisis de ingresos y gastos, con el fin de mejorar el control financiero y apoyar la toma de decisiones económicas.
-El sistema incorporará funcionalidades de seguimiento, análisis y recomendaciones, permitiendo ir más allá de un simple registro de transacciones.
+Desarrollar eko, una aplicación web de gestión financiera personal que permita registrar, clasificar y analizar ingresos y gastos, incorporando funcionalidades de presupuestos, balances, reportes y recomendaciones financieras para apoyar el control y seguimiento económico del usuario.

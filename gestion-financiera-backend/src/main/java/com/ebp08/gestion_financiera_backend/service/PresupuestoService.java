@@ -3,6 +3,7 @@ package com.ebp08.gestion_financiera_backend.service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -66,6 +67,7 @@ public class PresupuestoService {
 
         return presupuestoRepository.save(presupuesto); // Crea un nuevo presupuesto global
     }
+    
     // Crear un presupuesto específico para una categoría
     public Presupuesto crearPresupuestoCategoria(CrearPresupuestoCategoriaRequest request) {
         
@@ -114,67 +116,96 @@ public class PresupuestoService {
     }
 
     public ResumenPresupuestoGlobalResponse obtenerResumenPresupuestoGlobal() {
-
-        Long idUsuario = securityHelper.obtenerUsuarioAutenticado().getId();
-        securityHelper.validarPropiedad(idUsuario);
-
-        Optional<Presupuesto> presupuestoActual = presupuestoRepository.findByUsuarioIdAndMesActual(idUsuario);
+        Optional<Presupuesto> presupuestoActual = obtenerPresupuestoGlobalUsuario();
 
         if (presupuestoActual.isEmpty()) {
             return ResumenPresupuestoGlobalResponse.sinPresupuesto();
         }
 
         Presupuesto presupuesto = presupuestoActual.get();
-        BigDecimal gastado = calcularGastoMensual(idUsuario, null);
+        BigDecimal gastado = calcularGastoPresupuesto(presupuesto);
         BigDecimal disponible = presupuesto.getMontoLimite().subtract(gastado);
-        BigDecimal porcentajeUso = calcularPorcentajeUso(presupuesto.getMontoLimite(), gastado);
+        BigDecimal porcentajeUso = calcularPorcentajeUsoPresupuesto(presupuesto);
 
         return ResumenPresupuestoGlobalResponse.conPresupuesto(
             presupuesto.getMontoLimite(),
             gastado,
             disponible,
             porcentajeUso,
-            presupuesto.getFechaLimite()
+            presupuesto.getFechaLimite(),
+            presupuesto.getId()
         );
     }
 
-    public List<ResumenPresupuestoCategoriaResponse> obtenerResumenPresupuestoCategorias() {
+    // Trae el presupuesto global actual del usuario autenticado para uso interno entre servicios.
+    public Optional<Presupuesto> obtenerPresupuestoGlobalUsuario() {
+        Long idUsuario = securityHelper.obtenerUsuarioAutenticado().getId();
+        securityHelper.validarPropiedad(idUsuario);
+
+        return presupuestoRepository.findByUsuarioIdAndMesActual(idUsuario);
+    }
+
+    // Trae los presupuestos por categoria del usuario autenticado para uso interno entre servicios.
+    public List<Presupuesto> obtenerResumenPresupuestoCategorias() {
         Long idUsuario = securityHelper.obtenerUsuarioAutenticado().getId();
         
         securityHelper.validarPropiedad(idUsuario);
 
         List<Categoria> categorias = categoriaRepository.findByUsuarioIsNullOrUsuarioId(idUsuario);
-        List<Transaccion> transaccionesMes = obtenerTransaccionesMes(idUsuario);
 
-        List<ResumenPresupuestoCategoriaResponse> resultado = categorias.stream()
-            .map(categoria -> construirResumenCategoria(categoria, idUsuario, transaccionesMes))
+        return categorias.stream()
+            .map(categoria -> presupuestoRepository.findByUsuarioIdAndCategoriaIdAndMesActual(idUsuario, categoria.getId()).orElse(null))
             .filter(java.util.Objects::nonNull)
-            .toList();
-
-        return resultado;
+            .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
     }
 
-    private ResumenPresupuestoCategoriaResponse construirResumenCategoria(Categoria categoria, Long idUsuario, List<Transaccion> transaccionesMes) {
-        Optional<Presupuesto> presupuestoActual = presupuestoRepository.findByUsuarioIdAndCategoriaIdAndMesActual(idUsuario, categoria.getId());
+    // Trae el resumen de presupuestos por categoria para respuestas del controller.
+    public List<ResumenPresupuestoCategoriaResponse> obtenerResumenPresupuestoCategoriasResponse() {
+        Long idUsuario = securityHelper.obtenerUsuarioAutenticado().getId();
+        securityHelper.validarPropiedad(idUsuario);
 
-        if (presupuestoActual.isEmpty()) {
+        List<Transaccion> transaccionesMes = obtenerTransaccionesMes(idUsuario);
+
+        return obtenerResumenPresupuestoCategorias().stream()
+            .map(presupuesto -> construirResumenCategoriaResponse(presupuesto, transaccionesMes))
+            .filter(java.util.Objects::nonNull)
+            .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+    }
+
+    private ResumenPresupuestoCategoriaResponse construirResumenCategoriaResponse(Presupuesto presupuesto, List<Transaccion> transaccionesMes) {
+        if (presupuesto.getCategoria() == null) {
             return null;
         }
 
-        Presupuesto presupuesto = presupuestoActual.get();
-        BigDecimal gastado = calcularGastoPorCategoria(transaccionesMes, categoria.getId());
+        BigDecimal gastado = calcularGastoPorCategoria(transaccionesMes, presupuesto.getCategoria().getId());
         BigDecimal disponible = presupuesto.getMontoLimite().subtract(gastado);
         BigDecimal porcentajeUso = calcularPorcentajeUso(presupuesto.getMontoLimite(), gastado);
 
         return ResumenPresupuestoCategoriaResponse.de(
-            categoria.getId(),
-            categoria.getNombre(),
+            presupuesto.getId(),
+            presupuesto.getCategoria().getId(),
+            presupuesto.getCategoria().getNombre(),
             presupuesto.getMontoLimite(),
             gastado,
             disponible,
             porcentajeUso,
             presupuesto.getFechaLimite()
         );
+    }
+
+    // Calcula el porcentaje de uso del presupuesto para uso interno entre servicios.
+    public BigDecimal calcularPorcentajeUsoPresupuesto(Presupuesto presupuesto) {
+        BigDecimal gastado = calcularGastoPresupuesto(presupuesto);
+        return calcularPorcentajeUso(presupuesto.getMontoLimite(), gastado);
+    }
+
+    // Calcula el gasto acumulado del mes asociado a un presupuesto (global o por categoria).
+    public BigDecimal calcularGastoPresupuesto(Presupuesto presupuesto) {
+        Long idUsuario = securityHelper.obtenerUsuarioAutenticado().getId();
+        securityHelper.validarPropiedad(idUsuario);
+
+        Long idCategoria = presupuesto.getCategoria() != null ? presupuesto.getCategoria().getId() : null;
+        return calcularGastoMensual(idUsuario, idCategoria);
     }
 
     private List<Transaccion> obtenerTransaccionesMes(Long idUsuario) {
@@ -207,6 +238,13 @@ public class PresupuestoService {
 
         return gastado.multiply(BigDecimal.valueOf(100))
             .divide(montoLimite, 2, RoundingMode.HALF_UP);
+    }
+
+    public Optional<Presupuesto> obtenerPresupuestoPorId(Long idPresupuesto) {
+        Long idUsuario = securityHelper.obtenerUsuarioAutenticado().getId();
+        securityHelper.validarPropiedad(idUsuario);
+
+        return presupuestoRepository.findByIdAndUsuarioId(idPresupuesto, idUsuario);
     }
 
 }
