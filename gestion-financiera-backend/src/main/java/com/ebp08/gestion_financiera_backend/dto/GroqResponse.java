@@ -1,7 +1,6 @@
 package com.ebp08.gestion_financiera_backend.dto;
 
 import java.util.List;
-
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -9,28 +8,21 @@ import lombok.NoArgsConstructor;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
-public class GeminiResponse {
-    private List<Candidate> candidates;
+public class GroqResponse {
+    private List<Choice> choices;
 
     @Data
     @AllArgsConstructor
     @NoArgsConstructor
-    public static class Candidate {
-        private Content content;
+    public static class Choice {
+        private Message message;
     }
 
     @Data
     @AllArgsConstructor
     @NoArgsConstructor
-    public static class Content {
-        private List<Part> parts;
+    public static class Message {
+        private String role;
+        private String content;
     }
-
-    @Data
-    @AllArgsConstructor
-    @NoArgsConstructor
-    public static class Part {
-        private String text;
-    }
-
 }

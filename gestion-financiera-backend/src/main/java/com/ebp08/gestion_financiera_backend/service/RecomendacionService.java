@@ -12,8 +12,8 @@ import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
-import com.ebp08.gestion_financiera_backend.dto.GeminiRequest;
-import com.ebp08.gestion_financiera_backend.dto.GeminiResponse;
+import com.ebp08.gestion_financiera_backend.dto.GroqRequest;
+import com.ebp08.gestion_financiera_backend.dto.GroqResponse;
 import com.ebp08.gestion_financiera_backend.entity.Alerta;
 import com.ebp08.gestion_financiera_backend.entity.Presupuesto;
 import com.ebp08.gestion_financiera_backend.entity.Transaccion;
@@ -24,10 +24,10 @@ public class RecomendacionService {
     private static final String IA_NO_DISPONIBLE =
             "La API de IA no está disponible temporalmente. Intenta nuevamente en unos minutos.";
 
-    @Value("${gemini.api.key}")
+    @Value("${groq.api.key}")
     private String apiKey;
-    
-    @Value("${gemini.api.url}")
+
+    @Value("${groq.api.url}")
     private String apiUrl;
 
     private final RestTemplate restTemplate;
@@ -155,38 +155,38 @@ public class RecomendacionService {
     }
 
     private String llamarAPI(String prompt) {
-        String url = apiUrl + "?key=" + apiKey;
-
-        GeminiRequest request = new GeminiRequest(
-                List.of(new GeminiRequest.Content(
-                        List.of(new GeminiRequest.Part(prompt))
-                ))
+        GroqRequest request = new GroqRequest(
+            "llama3-8b-8192",
+            List.of(new GroqRequest.Message("user", prompt))
         );
 
+        org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+        headers.set("Authorization", "Bearer " + apiKey);
+        headers.set("Content-Type", "application/json");
+
+        org.springframework.http.HttpEntity<GroqRequest> entity =
+            new org.springframework.http.HttpEntity<>(request, headers);
+
         try {
-            GeminiResponse response = restTemplate.postForObject(
-                url,
-                request,
-                GeminiResponse.class
+            GroqResponse response = restTemplate.postForObject(
+                apiUrl,
+                entity,
+                GroqResponse.class
             );
 
-            if (response == null || response.getCandidates() == null
-                    || response.getCandidates().isEmpty()) {
+            if (response == null || response.getChoices() == null
+                    || response.getChoices().isEmpty()) {
                 return "No se pudieron generar recomendaciones en este momento.";
             }
 
-            return response.getCandidates()
-                            .get(0)
-                            .getContent()
-                            .getParts()
-                            .get(0)
-                            .getText();
+            return response.getChoices().get(0).getMessage().getContent();
+
         } catch (HttpStatusCodeException ex) {
-            System.err.println("Error llamando a Gemini. Status: " + ex.getStatusCode().value()
+            System.err.println("Error llamando a Groq. Status: " + ex.getStatusCode().value()
                     + ", body: " + ex.getResponseBodyAsString());
             return IA_NO_DISPONIBLE;
         } catch (RestClientException ex) {
-            System.err.println("Error de red o cliente llamando a Gemini: " + ex.getMessage());
+            System.err.println("Error de red llamando a Groq: " + ex.getMessage());
             return IA_NO_DISPONIBLE;
         }
     }
