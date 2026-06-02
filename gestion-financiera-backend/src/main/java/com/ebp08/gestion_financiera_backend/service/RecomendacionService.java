@@ -12,8 +12,8 @@ import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
-import com.ebp08.gestion_financiera_backend.dto.GroqRequest;
-import com.ebp08.gestion_financiera_backend.dto.GroqResponse;
+import com.ebp08.gestion_financiera_backend.dto.GeminiRequest;
+import com.ebp08.gestion_financiera_backend.dto.GeminiResponse;
 import com.ebp08.gestion_financiera_backend.entity.Alerta;
 import com.ebp08.gestion_financiera_backend.entity.Presupuesto;
 import com.ebp08.gestion_financiera_backend.entity.Transaccion;
@@ -22,12 +22,12 @@ import com.ebp08.gestion_financiera_backend.entity.Transaccion;
 public class RecomendacionService {
 
     private static final String IA_NO_DISPONIBLE =
-            "La API de IA no está disponible temporalmente. Intenta nuevamente en unos minutos.";
+            "El servicio de recomendaciones no está disponible temporalmente. Intenta nuevamente más tarde.";
 
-    @Value("${groq.api.key}")
+    @Value("${gemini.api.key}")
     private String apiKey;
 
-    @Value("${groq.api.url}")
+    @Value("${gemini.api.url}")
     private String apiUrl;
 
     private final RestTemplate restTemplate;
@@ -46,9 +46,6 @@ public class RecomendacionService {
     }
     
     public String obtenerRecomendacionesPorBalance() {
-
-        // 1. Obtener las transacciones del mes actual
-
         int mesActual = LocalDate.now().getMonthValue();
         int anioActual = LocalDate.now().getYear();
 
@@ -58,69 +55,47 @@ public class RecomendacionService {
         BigDecimal totalGastos = transaccionService.calcularTotalGastos(transaccionesMes);
         BigDecimal balance = totalIngresos.subtract(totalGastos);
 
-        // 2. Detallamos las transacciones para el prompt
-
         StringBuilder detalleTransacciones = new StringBuilder();
-        transaccionesMes.forEach(t ->  detalleTransacciones.append(
-            String.format("- %s | %s | %s | %s%n",
+        transaccionesMes.forEach(t -> detalleTransacciones.append(
+            String.format("- %s | %s | $%s | %s%n",
                 t.getCategoria().getNombre(),
                 t.getTipo(),
                 t.getMonto(),
                 t.getDescripcion() != null ? t.getDescripcion() : "Sin descripción")
         ));
         
-        // 3. Construimos el prompt para Gemini
-
         String prompt = String.format("""
                 Eres un asesor financiero inteligente. Basándote en el siguiente balance mensual y \
-                detalle de transacciones, proporciona 3 recomendaciones personalizadas para \
-                mejorar la salud financiera del usuario. 
-                Recomienda acciones concretas, cortas y accionables en español, \
-                como reducir gastos en ciertas categorías o , \
-                mantener buenos hábitos o fortalecer el ahorro.
+                detalle de transacciones, proporciona exactamente 3 recomendaciones personalizadas y numeradas \
+                para mejorar la salud financiera del usuario. 
+                Recomienda acciones concretas, cortas y accionables en español.
                 
-                Balance %s %d:
+                Balance de %s %d:
                 - Ingresos totales: $%s
-                - Egresos totales: $%s
-                - Balance: $%s
+                - Gastos totales: $%s
+                - Balance Neto: $%s
 
                 Transacciones del mes:
                 %s
-
-                Genera exactamente 3 recomendaciones numeradas basadas en los patrones que observas.
                 """,
-
-                // Para mostrar el nombre del mes en español
                 LocalDate.now().getMonth().getDisplayName(TextStyle.FULL, Locale.forLanguageTag("es")),
-                // Las otras especificaciones del format
-                anioActual,
-                totalIngresos,
-                totalGastos,
-                balance,
-                detalleTransacciones
+                anioActual, totalIngresos, totalGastos, balance, detalleTransacciones
         );
 
         return llamarAPI(prompt);
     }
 
     public String obtenerRecomendacionesPorAlertas() {
-        
-        // 1. Obtener las alertas generadas y presupuestos del usuario
-        
         List<Alerta> alertas = alertaService.obtenerAlertasUsuario();
 
         if (alertas.isEmpty()) {
-            return "No se han generado alertas de presupuesto para este mes. ¡Sigue así!";
+            return "No se han detectado alertas de presupuesto este mes. ¡Tu planificación va excelente!";
         }
 
         List<Presupuesto> presupuestos = presupuestoService.obtenerResumenPresupuestoCategorias();
 
-        // 2. Detallamos las alertas y los presupuestos para el prompt
-        
         StringBuilder detalleAlertas = new StringBuilder();
-        alertas.forEach(a -> detalleAlertas.append(
-                String.format("- %s: %s%n", a.getTipo(), a.getMensaje())
-        )); 
+        alertas.forEach(a -> detalleAlertas.append(String.format("- %s: %s%n", a.getTipo(), a.getMensaje()))); 
 
         StringBuilder detallePresupuestos = new StringBuilder();
         presupuestos.forEach(p -> detallePresupuestos.append(
@@ -131,62 +106,72 @@ public class RecomendacionService {
                         presupuestoService.calcularPorcentajeUsoPresupuesto(p))
         ));
 
-        //. 3. Construimos el prompt para Gemini
         String prompt = String.format("""
-                Eres un asesor financiero inteligente. Basándote en las siguientes alertas de presupuesto \
-                y el detalle de los presupuestos por categoría, proporciona 3 recomendaciones personalizadas para \
-                mejorar la salud financiera del usuario. 
-                Recomienda acciones concretas, cortas y accionables en español, \
-                como reducir gastos en ciertas categorías o fortalecer el ahorro.
+                Eres un asesor financiero experto en control de presupuestos. El usuario tiene las siguientes alertas \
+                de gastos excesivos. Genera exactamente 3 recomendaciones numeradas y breves en español para contener \
+                el sobregasto:
 
                 Alertas activas:
                 %s
 
-                Detalle de presupuestos por categoría:
+                Detalle de presupuestos:
                 %s
-
-                Genera exactamente 3 recomendaciones numeradas basadas en los patrones que observas.
                 """,
-                detalleAlertas,
-                detallePresupuestos
+                detalleAlertas, detallePresupuestos
         );
 
         return llamarAPI(prompt);
     }
 
+    /**
+     * Comunicación con la API nativa de Google Gemini utilizando la estructura de tu CURL
+     */
     private String llamarAPI(String prompt) {
-        GroqRequest request = new GroqRequest(
-            "llama3-8b-8192",
-            List.of(new GroqRequest.Message("user", prompt))
-        );
+        // Construimos la estructura exacta del JSON: contents -> parts -> text
+        GeminiRequest.Part part = new GeminiRequest.Part(prompt);
+        GeminiRequest.Content content = new GeminiRequest.Content(List.of(part));
+        GeminiRequest request = new GeminiRequest(List.of(content));
 
         org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
-        headers.set("Authorization", "Bearer " + apiKey);
-        headers.set("Content-Type", "application/json");
+        headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
+        
+        // Configuramos la cabecera personalizada requerida por la API nativa de Google
+        headers.set("X-goog-api-key", apiKey);
 
-        org.springframework.http.HttpEntity<GroqRequest> entity =
-            new org.springframework.http.HttpEntity<>(request, headers);
+        org.springframework.http.HttpEntity<GeminiRequest> entity = 
+                new org.springframework.http.HttpEntity<>(request, headers);
 
         try {
-            GroqResponse response = restTemplate.postForObject(
+            org.springframework.http.ResponseEntity<GeminiResponse> responseEntity = restTemplate.exchange(
                 apiUrl,
+                org.springframework.http.HttpMethod.POST,
                 entity,
-                GroqResponse.class
+                GeminiResponse.class
             );
 
-            if (response == null || response.getChoices() == null
-                    || response.getChoices().isEmpty()) {
-                return "No se pudieron generar recomendaciones en este momento.";
+            GeminiResponse response = responseEntity.getBody();
+
+            // Validación exhaustiva del árbol del JSON de respuesta de Google
+            if (response == null || response.getCandidates() == null || response.getCandidates().isEmpty()) {
+                return "La IA de Google no devolvió candidatos válidos.";
             }
 
-            return response.getChoices().get(0).getMessage().getContent();
+            GeminiResponse.Candidate primerCandidato = response.getCandidates().get(0);
+            if (primerCandidato.getContent() == null || 
+                primerCandidato.getContent().getParts() == null || 
+                primerCandidato.getContent().getParts().isEmpty()) {
+                return "Google respondió, pero la estructura del contenido está vacía.";
+            }
+
+            // Retornamos el texto limpio generado de la primera parte del primer candidato
+            return primerCandidato.getContent().getParts().get(0).getText();
 
         } catch (HttpStatusCodeException ex) {
-            System.err.println("Error llamando a Groq. Status: " + ex.getStatusCode().value()
-                    + ", body: " + ex.getResponseBodyAsString());
+            System.err.println("Error en Gemini API Nativa. HTTP Status: " + ex.getStatusCode().value()
+                    + " | Body: " + ex.getResponseBodyAsString());
             return IA_NO_DISPONIBLE;
         } catch (RestClientException ex) {
-            System.err.println("Error de red llamando a Groq: " + ex.getMessage());
+            System.err.println("Error de red con los servidores de Google: " + ex.getMessage());
             return IA_NO_DISPONIBLE;
         }
     }

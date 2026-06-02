@@ -8,21 +8,27 @@ import lombok.NoArgsConstructor;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
-public class GroqResponse {
-    private List<Choice> choices;
+public class GeminiResponse {
+    private List<Candidate> candidates;
 
     @Data
     @AllArgsConstructor
     @NoArgsConstructor
-    public static class Choice {
-        private Message message;
+    public static class Candidate {
+        private Content content;
     }
 
     @Data
     @AllArgsConstructor
     @NoArgsConstructor
-    public static class Message {
-        private String role;
-        private String content;
+    public static class Content {
+        private List<Part> parts;
+    }
+
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class Part {
+        private String text;
     }
 }

@@ -8,15 +8,20 @@ import lombok.NoArgsConstructor;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
-public class GroqRequest {
-    private String model;
-    private List<Message> messages;
+public class GeminiRequest {
+    private List<Content> contents;
 
     @Data
     @AllArgsConstructor
     @NoArgsConstructor
-    public static class Message {
-        private String role;
-        private String content;
+    public static class Content {
+        private List<Part> parts;
+    }
+
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class Part {
+        private String text;
     }
 }
